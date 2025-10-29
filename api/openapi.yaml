@@ -1,0 +1,975 @@
+openapi: 3.0.3
+info:
+    title: Brainrot API
+    version: 1.0.0
+    description: >
+        - API для управления пользователями, чатами, сообщениями в Brainrot AI.
+paths:
+    /user/me:
+        get:
+            tags:
+                - user
+            summary: Получение информации о текущем пользователе
+            description: >
+                Возвращает информацию о текущем авторизованном пользователе. 
+                Требуется передать access_token в заголовке Authorization: Bearer <token>.
+            security:
+                - bearerAuth: []
+            parameters:
+                - name: Authorization
+                  in: header
+                  required: true
+                  description: Access token формата Bearer <token>
+                  schema:
+                      type: string
+            responses:
+                "200":
+                    description: Информация о пользователе
+                    headers:
+                        X-RateLimit-Limit:
+                            $ref: "#/components/headers/RateLimitLimit"
+                        X-RateLimit-Remaining:
+                            $ref: "#/components/headers/RateLimitRemaining"
+                        X-RateLimit-Reset:
+                            $ref: "#/components/headers/RateLimitReset"
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    user:
+                                        $ref: "#/components/schemas/User"
+                "401":
+                    description: Пользователь не авторизован
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    error:
+                                        type: string
+                                        example: Access token отсутствует или недействителен
+                "429":
+                    $ref: "#/components/responses/TooManyRequests"
+    /user/register:
+        post:
+            tags:
+                - user
+            summary: Регистрация пользователя с подтверждением email
+            description: >
+                Регистрирует нового пользователя.  
+                После регистрации на email отправляется ссылка для подтверждения аккаунта.
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            type: object
+                            required:
+                                - username
+                                - email
+                                - password
+                                - confirmPassword
+                            properties:
+                                username:
+                                    type: string
+                                    example: John Doe
+                                email:
+                                    type: string
+                                    format: email
+                                    example: newuser@example.com
+                                password:
+                                    type: string
+                                    minLength: 8
+                                    pattern: '^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$'
+                                    example: strongPassword123
+                                confirmPassword:
+                                    type: string
+                                    minLength: 8
+                                    pattern: '^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$'
+                                    example: strongPassword123
+
+            responses:
+                "201":
+                    description: Пользователь успешно зарегистрирован, email отправлен
+                    headers:
+                        X-RateLimit-Limit:
+                            $ref: "#/components/headers/RateLimitLimit"
+                        X-RateLimit-Remaining:
+                            $ref: "#/components/headers/RateLimitRemaining"
+                        X-RateLimit-Reset:
+                            $ref: "#/components/headers/RateLimitReset"
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    user:
+                                        $ref: "#/components/schemas/User"
+                "400":
+                    description: Ошибка валидации (например, пароли не совпадают)
+                "409":
+                    description: Пользователь с таким email уже существует
+                "429":
+                    $ref: "#/components/responses/TooManyRequests"
+    /user/confirm:
+        get:
+            tags:
+                - user
+            summary: Подтверждение email
+            description: >
+                Подтверждает аккаунт пользователя по ссылке, отправленной на email.  
+                Ожидается параметр `token` в query string.
+            parameters:
+                - in: query
+                  name: token
+                  required: true
+                  schema:
+                      type: string
+                  description: Токен подтверждения email
+            responses:
+                "200":
+                    description: Аккаунт успешно подтвержден
+                    headers:
+                        X-RateLimit-Limit:
+                            $ref: "#/components/headers/RateLimitLimit"
+                        X-RateLimit-Remaining:
+                            $ref: "#/components/headers/RateLimitRemaining"
+                        X-RateLimit-Reset:
+                            $ref: "#/components/headers/RateLimitReset"
+                "400":
+                    description: Токен недействителен или просрочен
+                "404":
+                    description: Пользователь не найден
+                "429":
+                    $ref: "#/components/responses/TooManyRequests"
+    /user/login:
+        post:
+            tags:
+                - user
+            summary: Авторизация пользователя
+            description: >
+                Авторизация по email и паролю.  
+                При успешной аутентификации возвращает access_token в теле ответа,  
+                а refresh_token устанавливается в HttpOnly cookie.
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            type: object
+                            required:
+                                - email
+                                - password
+                            properties:
+                                email:
+                                    type: string
+                                    format: email
+                                    example: user@example.com
+                                password:
+                                    type: string
+                                    minLength: 8
+                                    pattern: '^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$'
+                                    example: secret123
+            responses:
+                "200":
+                    description: Успешная авторизация
+                    headers:
+                        Set-Cookie:
+                            description: >
+                                Refresh token в HttpOnly cookie.  
+                                Пример: `refresh_token=abcdef123456; HttpOnly; Path=/; Secure; SameSite=Strict`
+                            schema:
+                                type: string
+                        X-RateLimit-Limit:
+                            $ref: "#/components/headers/RateLimitLimit"
+                        X-RateLimit-Remaining:
+                            $ref: "#/components/headers/RateLimitRemaining"
+                        X-RateLimit-Reset:
+                            $ref: "#/components/headers/RateLimitReset"
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    access_token:
+                                        type: string
+                                        example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                                    user:
+                                        $ref: "#/components/schemas/User"
+                "400":
+                    description: Ошибка валидации входных данных
+                "401":
+                    description: Неверный email или пароль
+                "429":
+                    $ref: "#/components/responses/TooManyRequests"
+    /user/logout:
+        post:
+            tags:
+                - user
+            summary: Выход пользователя
+            description: >
+                Удаляет refresh_token cookie,  
+                делая access_token недействительным при следующем обновлении.
+                Требуется передать access_token в заголовке Authorization: Bearer <token>.
+            security:
+                - bearerAuth: []
+            parameters:
+                - name: Authorization
+                  in: header
+                  required: true
+                  description: Access token формата Bearer <token>
+                  schema:
+                      type: string
+            responses:
+                "200":
+                    description: Пользователь успешно вышел
+                    headers:
+                        X-RateLimit-Limit:
+                            $ref: "#/components/headers/RateLimitLimit"
+                        X-RateLimit-Remaining:
+                            $ref: "#/components/headers/RateLimitRemaining"
+                        X-RateLimit-Reset:
+                            $ref: "#/components/headers/RateLimitReset"
+                "401":
+                    description: Пользователь не авторизован
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    error:
+                                        type: string
+                                        example: Access token отсутствует или недействителен
+                "429":
+                    $ref: "#/components/responses/TooManyRequests"
+    /user/password/forgot:
+        post:
+            tags:
+                - user
+            summary: Запрос на восстановление пароля
+            description: >
+                Отправляет ссылку для восстановления пароля на указанный email.
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            type: object
+                            required:
+                                - email
+                            properties:
+                                email:
+                                    type: string
+                                    format: email
+                                    example: user@example.com
+            responses:
+                "200":
+                    description: Ссылка для восстановления пароля отправлена
+                    headers:
+                        X-RateLimit-Limit:
+                            $ref: "#/components/headers/RateLimitLimit"
+                        X-RateLimit-Remaining:
+                            $ref: "#/components/headers/RateLimitRemaining"
+                        X-RateLimit-Reset:
+                            $ref: "#/components/headers/RateLimitReset"
+                "404":
+                    description: Пользователь с таким email не найден
+                "400":
+                    description: Некорректный email
+                "429":
+                    $ref: "#/components/responses/TooManyRequests"
+    /user/password/reset:
+        post:
+            tags:
+                - user
+            summary: Сброс пароля
+            description: >
+                Позволяет пользователю установить новый пароль по ссылке из письма.  
+                Ожидается token из письма.
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            type: object
+                            required:
+                                - token
+                                - newPassword
+                                - confirmPassword
+                            properties:
+                                token:
+                                    type: string
+                                    example: abcdef123456
+                                newPassword:
+                                    type: string
+                                    minLength: 8
+                                    pattern: '^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$'
+                                    example: NewStrongPassword123
+                                confirmPassword:
+                                    type: string
+                                    minLength: 8
+                                    pattern: '^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$'
+                                    example: NewStrongPassword123
+            responses:
+                "200":
+                    description: Пароль успешно обновлен
+                    headers:
+                        X-RateLimit-Limit:
+                            $ref: "#/components/headers/RateLimitLimit"
+                        X-RateLimit-Remaining:
+                            $ref: "#/components/headers/RateLimitRemaining"
+                        X-RateLimit-Reset:
+                            $ref: "#/components/headers/RateLimitReset"
+                "400":
+                    description: Токен недействителен или пароли не совпадают
+                "404":
+                    description: Пользователь не найден
+                "429":
+                    $ref: "#/components/responses/TooManyRequests"
+    /user:
+        put:
+            tags:
+                - user
+            summary: Обновление данных пользователя
+            description: >
+                Позволяет обновить информацию о текущем авторизованном пользователе.  
+                Требуется передать access_token в заголовке Authorization: Bearer <token>.
+            security:
+                - bearerAuth: []
+            parameters:
+                - name: Authorization
+                  in: header
+                  required: true
+                  description: Access token формата Bearer <token>
+                  schema:
+                      type: string
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            type: object
+                            required:
+                                - name
+                                - email
+                                - telegram_link
+                            properties:
+                                name:
+                                    type: string
+                                    minLength: 1
+                                    maxLength: 50
+                                    example: Jane
+                                surname:
+                                    type: string
+                                    minLength: 1
+                                    maxLength: 50
+                                    example: Doe
+                                birthdate:
+                                    type: string
+                                    format: date
+                                    example: 1990-05-12
+                                telegram_link:
+                                    type: string
+                                    format: uri
+                                    example: https://t.me/mrtwisterinvesting
+                                email:
+                                    type: string
+                                    format: email
+                                    example: user@example.com
+
+            responses:
+                "200":
+                    description: Данные пользователя успешно обновлены
+                    headers:
+                        X-RateLimit-Limit:
+                            $ref: "#/components/headers/RateLimitLimit"
+                        X-RateLimit-Remaining:
+                            $ref: "#/components/headers/RateLimitRemaining"
+                        X-RateLimit-Reset:
+                            $ref: "#/components/headers/RateLimitReset"
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    user:
+                                        $ref: "#/components/schemas/User"
+                "400":
+                    description: Ошибка валидации входных данных
+                "401":
+                    description: Пользователь не авторизован
+                "429":
+                    $ref: "#/components/responses/TooManyRequests"
+    /chats:
+        post:
+            tags:
+                - chats
+            summary: Создание нового чата
+            description: >
+                Создает новый чат для текущего пользователя.
+                Требуется передать access_token в заголовке Authorization: Bearer <token>.
+            security:
+                - bearerAuth: []
+            parameters:
+                - name: Authorization
+                  in: header
+                  required: true
+                  description: Access token формата Bearer <token>
+                  schema:
+                      type: string
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            type: object
+                            required:
+                                - title
+                            properties:
+                                title:
+                                    type: string
+                                    minLength: 1
+                                    maxLength: 100
+                                    example: Новый чат
+            responses:
+                "201":
+                    description: Чат успешно создан
+                    headers:
+                        X-RateLimit-Limit:
+                            $ref: "#/components/headers/RateLimitLimit"
+                        X-RateLimit-Remaining:
+                            $ref: "#/components/headers/RateLimitRemaining"
+                        X-RateLimit-Reset:
+                            $ref: "#/components/headers/RateLimitReset"
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    id:
+                                        type: integer
+                                        example: 1
+                                    title:
+                                        type: string
+                                        example: Новый чат
+                "400":
+                    description: Ошибка валидации
+                "401":
+                    description: Пользователь не авторизован
+                "429":
+                    $ref: "#/components/responses/TooManyRequests"
+        get:
+            tags:
+                - chats
+            summary: Список чатов пользователя
+            description: >
+                Возвращает список всех чатов текущего пользователя.
+                Требуется передать access_token в заголовке Authorization: Bearer <token>.
+            security:
+                - bearerAuth: []
+            parameters:
+                - name: Authorization
+                  in: header
+                  required: true
+                  description: Access token формата Bearer <token>
+                  schema:
+                      type: string
+                - name: title
+                  in: query
+                  required: false
+                  schema:
+                      type: string
+                      minLength: 1
+            responses:
+                "200":
+                    description: Список чатов
+                    headers:
+                        X-RateLimit-Limit:
+                            $ref: "#/components/headers/RateLimitLimit"
+                        X-RateLimit-Remaining:
+                            $ref: "#/components/headers/RateLimitRemaining"
+                        X-RateLimit-Reset:
+                            $ref: "#/components/headers/RateLimitReset"
+                    content:
+                        application/json:
+                            schema:
+                                type: array
+                                items:
+                                    type: object
+                                    properties:
+                                        id:
+                                            type: integer
+                                            example: 1
+                                        title:
+                                            type: string
+                                            example: Новый чат
+                                        sender_id:
+                                            type: integer
+                                            example: 1
+                                        recipient_id:
+                                            type: integer
+                                            example: 2
+                "401":
+                    description: Пользователь не авторизован
+                "429":
+                    $ref: "#/components/responses/TooManyRequests"
+        put:
+            tags:
+                - chats
+            summary: Изменение названия чата
+            description: >
+                Позволяет изменить название существующего чата.
+                Требуется передать access_token в заголовке Authorization: Bearer <token>.
+            security:
+                - bearerAuth: []
+            parameters:
+                - name: Authorization
+                  in: header
+                  required: true
+                  description: Access token формата Bearer <token>
+                  schema:
+                      type: string
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            type: object
+                            required:
+                                - id
+                                - title
+                            properties:
+                                id:
+                                    type: integer
+                                    example: 1
+                                title:
+                                    type: string
+                                    minLength: 1
+                                    maxLength: 100
+                                    example: Обновленный чат
+                                recipient_id:
+                                    type: integer
+                                    example: 2
+            responses:
+                "200":
+                    description: Название чата успешно обновлено
+                    headers:
+                        X-RateLimit-Limit:
+                            $ref: "#/components/headers/RateLimitLimit"
+                        X-RateLimit-Remaining:
+                            $ref: "#/components/headers/RateLimitRemaining"
+                        X-RateLimit-Reset:
+                            $ref: "#/components/headers/RateLimitReset"
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    id:
+                                        type: integer
+                                        example: 1
+                                    title:
+                                        type: string
+                                        example: Обновленный чат
+                "400":
+                    description: Ошибка валидации
+                "401":
+                    description: Пользователь не авторизован
+                "404":
+                    description: Чат не найден
+                "429":
+                    $ref: "#/components/responses/TooManyRequests"
+        delete:
+            tags:
+                - chats
+            summary: Удаление чата
+            description: >
+                Удаляет чат по id. Требуется access_token в заголовке Authorization: Bearer <token>.
+            security:
+                - bearerAuth: []
+            parameters:
+                - name: id
+                  in: query
+                  required: true
+                  schema:
+                      type: integer
+                      example: 1
+                - name: Authorization
+                  in: header
+                  required: true
+                  description: Access token формата Bearer <token>
+                  schema:
+                      type: string
+            responses:
+                "200":
+                    description: Чат успешно удален
+                    headers:
+                        X-RateLimit-Limit:
+                            $ref: "#/components/headers/RateLimitLimit"
+                        X-RateLimit-Remaining:
+                            $ref: "#/components/headers/RateLimitRemaining"
+                        X-RateLimit-Reset:
+                            $ref: "#/components/headers/RateLimitReset"
+                "401":
+                    description: Пользователь не авторизован
+                "404":
+                    description: Чат не найден
+                "429":
+                    $ref: "#/components/responses/TooManyRequests"
+    /messages:
+        post:
+            tags:
+                - messages
+            summary: Создание нового сообщения
+            description: >
+                Добавляет новое сообщение в чат. Требуется access_token в заголовке Authorization: Bearer <token>.
+            security:
+                - bearerAuth: []
+            parameters:
+                - name: Authorization
+                  in: header
+                  required: true
+                  description: Access token формата Bearer <token>
+                  schema:
+                      type: string
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            type: object
+                            required:
+                                - chat_id
+                                - text
+                            properties:
+                                chat_id:
+                                    type: integer
+                                    example: 1
+                                text:
+                                    type: string
+                                    minLength: 1
+                                    maxLength: 2000
+                                    example: Сгенерируй видео...
+            responses:
+                "201":
+                    description: Сообщение успешно создано
+                    headers:
+                        X-RateLimit-Limit:
+                            $ref: "#/components/headers/RateLimitLimit"
+                        X-RateLimit-Remaining:
+                            $ref: "#/components/headers/RateLimitRemaining"
+                        X-RateLimit-Reset:
+                            $ref: "#/components/headers/RateLimitReset"
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    id:
+                                        type: integer
+                                        example: 1
+                                    chat_id:
+                                        type: integer
+                                        example: 1
+                                    text:
+                                        type: string
+                                        example: Привет!
+                "400":
+                    description: Ошибка валидации
+                "401":
+                    description: Пользователь не авторизован
+                "429":
+                    $ref: "#/components/responses/TooManyRequests"
+        get:
+            tags:
+                - messages
+            summary: Получение сообщений
+            description: >
+                Возвращает список сообщений чата по id. Требуется access_token в заголовке Authorization: Bearer <token>.
+            security:
+                - bearerAuth: []
+            parameters:
+                - name: chat_id
+                  in: query
+                  description: ID чата для получения сообщений
+                  required: true
+                  schema:
+                      type: integer
+                - name: Authorization
+                  in: header
+                  required: true
+                  description: Access token формата Bearer <token>
+                  schema:
+                      type: string
+            responses:
+                "200":
+                    description: Список сообщений
+                    headers:
+                        X-RateLimit-Limit:
+                            $ref: "#/components/headers/RateLimitLimit"
+                        X-RateLimit-Remaining:
+                            $ref: "#/components/headers/RateLimitRemaining"
+                        X-RateLimit-Reset:
+                            $ref: "#/components/headers/RateLimitReset"
+                    content:
+                        application/json:
+                            schema:
+                                type: array
+                                items:
+                                    type: object
+                                    properties:
+                                        id:
+                                            type: integer
+                                            example: 1
+                                        chat_id:
+                                            type: integer
+                                            example: 1
+                                        text:
+                                            type: string
+                                            example: Привет!
+                                        timestamp:
+                                            type: string
+                                            format: date-time
+                                            example: 2025-10-28T12:00:00Z
+                "401":
+                    description: Пользователь не авторизован
+                "404":
+                    description: Чат не найден
+                "429":
+                    $ref: "#/components/responses/TooManyRequests"
+    
+    /media:
+        post:
+            tags:
+                - media
+            summary: Загрузка медиафайла
+            description: >
+                Загружает медиафайл для пользователя. Требуется access_token в заголовке Authorization: Bearer <token>.
+            security:
+                - bearerAuth: []
+            parameters:
+                - name: Authorization
+                in: header
+                required: true
+                description: Access token формата Bearer <token>
+                schema:
+                type: string
+            requestBody:
+                  required: true
+                      content:
+                        multipart/form-data:
+                          schema:
+                            type: object
+                            required:
+                              - file_type
+                              - file
+                            properties:
+                              file_type:
+                                type: string
+                                enum: [image, text]
+                                example: image
+                              file:
+                                type: string
+                                format: binary
+        responses:
+          "201":
+            description: Медиафайл успешно загружен
+            headers:
+              X-RateLimit-Limit:
+                $ref: "#/components/headers/RateLimitLimit"
+              X-RateLimit-Remaining:
+                $ref: "#/components/headers/RateLimitRemaining"
+              X-RateLimit-Reset:
+                $ref: "#/components/headers/RateLimitReset"
+            content:
+              application/json:
+                schema:
+                  $ref: "#/components/schemas/Media"
+          "400":
+            description: Ошибка валидации или неверный тип файла
+          "401":
+            description: Пользователь не авторизован
+          "429":
+            $ref: "#/components/responses/TooManyRequests"
+        get:
+            tags:
+                - media
+            summary: Получение списка медиафайлов пользователя
+            description: >
+                Возвращает список медиафайлов текущего пользователя. Требуется access_token в заголовке Authorization: Bearer <token>.
+            security:
+                - bearerAuth: []
+            parameters:
+                - name: Authorization
+                    in: header
+                    required: true
+                    description: Access token формата Bearer <token>
+                    schema:
+                    type: string
+            responses:
+              "200":
+                description: Список медиафайлов
+                headers:
+                  X-RateLimit-Limit:
+                    $ref: "#/components/headers/RateLimitLimit"
+                  X-RateLimit-Remaining:
+                    $ref: "#/components/headers/RateLimitRemaining"
+                  X-RateLimit-Reset:
+                    $ref: "#/components/headers/RateLimitReset"
+                content:
+                  application/json:
+                    schema:
+                      type: array
+                      items:
+                        $ref: "#/components/schemas/Media"
+              "401":
+                description: Пользователь не авторизован
+              "429":
+                $ref: "#/components/responses/TooManyRequests"
+
+    /media/{id}:
+        get:
+            tags:
+                - media
+            summary: Получение медиафайла по ID
+            description: >
+                Возвращает информацию о конкретном медиафайле. Требуется access_token в заголовке Authorization: Bearer <token>.
+            security:
+                - bearerAuth: []
+            parameters:
+                - name: Authorization
+                in: header
+                required: true
+                description: Access token формата Bearer <token>
+                schema:
+                type: string
+                - name: id
+                in: path
+                required: true
+                schema:
+                    type: integer
+                    example: 1
+            responses:
+                "200":
+                    description: Информация о медиафайле
+                    headers:
+                        X-RateLimit-Limit:
+                        $ref: "#/components/headers/RateLimitLimit"
+                        X-RateLimit-Remaining:
+                        $ref: "#/components/headers/RateLimitRemaining"
+                        X-RateLimit-Reset:
+                        $ref: "#/components/headers/RateLimitReset"
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/Media"
+                "401":
+                    description: Пользователь не авторизован
+                "404":
+                    description: Медиафайл не найден
+                "429":
+                    $ref: "#/components/responses/TooManyRequests"
+
+components:
+    schemas:
+        User:
+            type: object
+            properties:
+                id:
+                    type: integer
+                    example: 1
+                email:
+                    type: string
+                    format: email
+                    example: user@example.com
+                name:
+                    type: string
+                    example: Jane
+                surname:
+                    type: string
+                    example: Doe
+                birthdate:
+                    type: string
+                    format: date
+                    example: 2004-04-07
+                telegram_link:
+                    type: string
+                    format: uri
+                    example: https://t.me/mrtwisterinvesting
+
+        Media:
+              type: object
+              properties:
+                id:
+                      type: integer
+                      example: 1
+                    user_id:
+                      type: integer
+                      example: 42
+                    file_type:
+                      type: string
+                      example: "image/png"
+                    file_url:
+                      type: string
+                      format: uri
+                      example: "https://cdn.example.com/uploads/image1.png"
+                      description: URL исходного файла
+        Message:
+            type: object
+            properties:
+                id:
+                    type: integer
+                    example: 1
+                chat_id:
+                    type: integer
+                    example: 1
+                text:
+                    type: string
+                    example: Привет!
+                role:
+                    type: string
+                    enum: [user, assistant]
+                    example: user
+                media_id:
+                    type: integer
+                    example: 1
+    securitySchemes:
+        bearerAuth:
+            type: http
+            scheme: bearer
+            bearerFormat: JWT
+    headers:
+        RateLimitLimit:
+            description: Максимальное количество запросов в текущем периоде
+            schema:
+                type: integer
+                example: 100
+        RateLimitRemaining:
+            description: Оставшееся количество запросов в текущем периоде
+            schema:
+                type: integer
+                example: 99
+        RateLimitReset:
+            description: Время в секундах до сброса лимита
+            schema:
+                type: integer
+                example: 60
+    responses:
+        TooManyRequests:
+            description: Слишком много запросов
+            headers:
+                X-RateLimit-Limit:
+                    $ref: "#/components/headers/RateLimitLimit"
+                X-RateLimit-Remaining:
+                    $ref: "#/components/headers/RateLimitRemaining"
+                X-RateLimit-Reset:
+                    $ref: "#/components/headers/RateLimitReset"
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            error:
+                                type: string
+                                example: Rate limit exceeded. Try again later.
